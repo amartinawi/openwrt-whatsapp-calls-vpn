@@ -22,6 +22,16 @@ logread -e wa-call | tail -20
 4. Check that the VPN itself passes UDP: some VPN servers or protocols block or throttle STUN. Try another server.
 5. Check that the phone isn't using its own VPN or Private Relay, which bypasses the router's routing.
 
+## "Possible missed relays" lists non-Meta IPs, but calls work
+The detector flags any UDP/3478 flow without a reply from a device that is in a call at that moment.
+PCs often run other apps that probe public STUN servers on port 3478 (softphones, games, P2P clients, Tailscale), and these
+can coincide with a call. Check the owner of a flagged IP:
+```sh
+curl -s "https://stat.ripe.net/data/prefix-overview/data.json?resource=IP" | jsonfilter -e '@.data.asns[*].holder'
+```
+If it isn't Meta/Facebook and calls work, it's harmless. Add the app's source port to `miss_ignore_sport`, or ignore it.
+Only enable catch-all mode if calls actually fail.
+
 ## Everything goes through the VPN, not only calls
 That's the VPN's own configuration, not this package. On GL.iNet, **global mode** routes all traffic through the VPN.
 Switch to policy mode with a source that has no devices (see the README, Installation step 1).
