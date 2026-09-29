@@ -1,0 +1,20 @@
+{
+	"luci-app-wa-call": {
+		"description": "Grant access to WhatsApp Calls via VPN",
+		"read": {
+			"file": {
+				"/etc/wa-call/wa-call.sh status --json": [ "exec" ],
+				"/tmp/wa-call/misses.log": [ "read" ]
+			},
+			"uci": [ "wa_call" ]
+		},
+		"write": {
+			"file": {
+				"/etc/wa-call/wa-call.sh update-list": [ "exec" ],
+				"/etc/wa-call/wa-call.sh apply": [ "exec" ],
+				"/tmp/wa-call/misses.log": [ "write" ]
+			},
+			"uci": [ "wa_call" ]
+		}
+	}
+}

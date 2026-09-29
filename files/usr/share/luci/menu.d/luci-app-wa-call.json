@@ -1,0 +1,14 @@
+{
+	"admin/services/wa-call": {
+		"title": "WhatsApp Calls via VPN",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "wa-call"
+		},
+		"depends": {
+			"acl": [ "luci-app-wa-call" ],
+			"uci": { "wa_call": true }
+		}
+	}
+}

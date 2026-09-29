@@ -1,0 +1,5 @@
+*.tgz
+*.pcap
+backup/
+*.swp
+.DS_Store

@@ -1,0 +1,8 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Follow the VPN tunnel: activate on ifup, fall back to WAN on ifdown.
+[ -x /etc/wa-call/wa-call.sh ] || exit 0
+[ "$INTERFACE" = "$(uci -q get wa_call.main.vpn_if || echo wgclient1)" ] || exit 0
+case "$ACTION" in
+	ifup|ifdown|ifupdate) /etc/wa-call/wa-call.sh apply ;;
+esac

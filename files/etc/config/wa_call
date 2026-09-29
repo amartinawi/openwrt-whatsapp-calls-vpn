@@ -1,0 +1,19 @@
+
+config wa_call 'main'
+	# Master switch (1 = route WhatsApp call media via VPN while the VPN is up)
+	option enabled '1'
+	# VPN network device used for calls (GL tunnel "WhatsApp")
+	option vpn_if 'wgclient1'
+	# LAN bridges whose clients are covered
+	list lan_if 'br-lan'
+	# UDP port used by WhatsApp call relays
+	option port '3478'
+	# 1 = send ALL LAN UDP to that port via VPN, not only Meta destinations
+	option catch_all '0'
+	# Refresh the Meta (AS32934) prefix list every N days (0 = never)
+	option refresh_days '7'
+	option prefix_url 'https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS32934'
+	# Log call flows that went via WAN and got no reply (possible missed relays)
+	option miss_check '1'
+	# Source ports ignored by the miss detector (Tailscale STUN)
+	list miss_ignore_sport '41641'

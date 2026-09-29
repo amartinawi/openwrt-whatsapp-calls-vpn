@@ -1,0 +1,30 @@
+#!/bin/sh /etc/rc.common
+# SPDX-License-Identifier: MIT
+# WhatsApp calls via VPN - routes UDP call media to Meta relays through the VPN tunnel.
+
+START=99
+STOP=10
+USE_PROCD=1
+ENGINE=/etc/wa-call/wa-call.sh
+
+start_service() {
+	$ENGINE apply
+	[ "$(uci -q get wa_call.main.enabled)" = "1" ] || return 0
+	procd_open_instance wa-call-monitor
+	procd_set_param command $ENGINE daemon
+	procd_set_param respawn 3600 5 0
+	procd_close_instance
+}
+
+stop_service() {
+	$ENGINE stop
+}
+
+reload_service() {
+	# re-run start: idempotent rule apply (keeps active calls) + procd instance update
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger wa_call
+}
