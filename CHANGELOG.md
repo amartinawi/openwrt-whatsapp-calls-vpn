@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 (2026-09-30)
+- Fix: `/lib/upgrade/keep.d/wa-call` now lists itself. Before, the feature survived the first firmware upgrade but was dropped on the second.
+- Watchdog: if the relay probe can't run at all (e.g. a missing library after a firmware change), the result is treated as unknown
+  and logged, instead of counting as a dead tunnel, so it doesn't switch servers pointlessly.
+- Docs: "Firmware upgrades" section.
+
 ## 1.2.0 (2026-09-30)
 - **Tunnel health watchdog**: every minute checks the WireGuard handshake age (with persistent keepalive) and probes WhatsApp relays
   through the VPN (`selftest.lua --vpn-probe`). After `watchdog_failures` consecutive failures it switches server: GL.iNet tunnel

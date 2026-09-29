@@ -17,6 +17,7 @@ It includes a LuCI page with an on/off switch and live status.
 - [Using it](#using-it)
 - [Configuration](#configuration)
 - [Command line](#command-line)
+- [Firmware upgrades](#firmware-upgrades)
 - [Uninstall](#uninstall)
 - [FAQ](#faq)
 - [Further docs](#further-docs)
@@ -216,6 +217,26 @@ cat /etc/wa-call/history.jsonl          # call history (one JSON object per call
 /etc/init.d/wa-call {start|stop|reload|enable|disable}
 logread -e wa-call                      # log (state changes, list updates, missed relays)
 ```
+
+---
+
+## Firmware upgrades
+With **"Keep settings"** checked (GL.iNet default), the feature survives an upgrade: all its files are registered in
+`/lib/upgrade/keep.d/wa-call`, including call history, the Meta list, the service links, and the keep file itself. Its runtime
+dependencies (`lua`, `nixio`, `uci`, `ipset`, `conntrack`, `curl`, `jsonfilter`, `wg`) are part of the GL.iNet firmware image.
+
+Check before upgrading:
+```sh
+sysupgrade -l | grep -E "wa-call|wa_call"     # should list ~17 files
+```
+
+After upgrading:
+- **LuCI** is installed on top of the firmware by GL.iNet and may need to be enabled again (GL UI → System → Advanced Settings).
+  The call routing works without it; only the page is missing until then.
+- Run `/etc/wa-call/wa-call.sh status` and the self-test to confirm.
+- If the new firmware moved to **fw4/nftables**, the rules can't be applied (this version supports fw3 only). The feature then
+  stays idle and calls use WAN. Nothing else is affected.
+- If the upgrade was done **without** keeping settings, reinstall with the one-line install command.
 
 ---
 

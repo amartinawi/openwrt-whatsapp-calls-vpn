@@ -303,7 +303,9 @@ watchdog() {
 	probe="$(lua "$SELFTEST" --vpn-probe 2>/dev/null)"
 	case "$probe" in
 		ok\ *) PROBE_RTT="$(echo "$probe" | awk '{print $2}')"; PROBE_RELAY="$(echo "$probe" | awk '{print $3}')" ;;
-		*) PROBE_OK=false ;;
+		fail*) PROBE_OK=false ;;
+		*) PROBE_RELAY="probe error"   # script/library problem (e.g. after a firmware upgrade): unknown, not a failure
+		   [ "$FAILS" -eq 0 ] && wd_log "relay probe could not run: $(echo "$probe" | head -n1 | cut -c1-80)" ;;
 	esac
 
 	# A connected call via VPN proves the path works: ignore probe-only failures during calls
