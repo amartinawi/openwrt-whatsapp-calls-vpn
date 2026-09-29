@@ -24,3 +24,11 @@ config wa_call 'main'
 	# Record call history in /etc/wa-call/history.jsonl
 	option history '1'
 	option history_max '200'
+	# Tunnel health watchdog: switch VPN server when the tunnel is dead
+	option watchdog '1'
+	# WireGuard handshake older than N seconds = dead (only with persistent keepalive)
+	option watchdog_handshake '180'
+	# Consecutive failed checks (1 per minute) before switching
+	option watchdog_failures '2'
+	# Maximum automatic switches per hour
+	option watchdog_max_per_hour '3'

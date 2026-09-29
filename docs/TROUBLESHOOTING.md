@@ -16,6 +16,13 @@ logread -e wa-call | tail -20
 | *WAN UDP not working* | Internet is down, or UDP is blocked entirely |
 | VPN "Failed" but calls work | The probed relays may have changed. Set `selftest_target` to `.57` relays seen in `history.jsonl` |
 
+## Watchdog
+- **Keeps switching servers:** check `/tmp/wa-call/watchdog.log` for the reason. *relay probe failed* on every server usually means the
+  probe relays changed: update `selftest_target`, or disable the probe-based switching by raising `watchdog_failures`.
+  Switching is capped at `watchdog_max_per_hour`.
+- **Never switches on plain OpenWrt:** it reconnects the same interface, because there is no server list to fail over to.
+- **Switch takes 30+ s:** GL tries the next profiles in order. Servers that don't connect cost about 15 s each before being skipped.
+
 ## State shows "idle - calls via WAN"
 - **VPN is down.** Check `ip -br link show <vpn_if>`. The feature only activates while the device exists and is UP.
 - **Wrong device name.** `uci get wa_call.main.vpn_if` must match `ip -br link` (GL.iNet: `wgclient1`, `ovpnclient1`).

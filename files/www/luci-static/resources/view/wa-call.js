@@ -13,6 +13,8 @@ var MISS_LOG = '/tmp/wa-call/misses.log';
 var SELFTEST = '/tmp/wa-call/selftest.json';
 var CALLS = '/tmp/wa-call/calls.json';
 var HISTORY = '/etc/wa-call/history.jsonl';
+var WATCHDOG = '/tmp/wa-call/watchdog.json';
+var WD_LOG = '/tmp/wa-call/watchdog.log';
 var HISTORY_SHOWN = 50;
 
 var COLOR = { ok: '#2e7d32', bad: '#c62828', idle: '#9e9e9e', vpn: '#1565c0', wan: '#ef6c00' };
@@ -44,7 +46,8 @@ function getMisses() {
 }
 
 function loadAll() {
-	return Promise.all([ getStatus(), readJSON(SELFTEST, null), readJSON(CALLS, []), getHistory(), getMisses() ]);
+	return Promise.all([ getStatus(), readJSON(SELFTEST, null), readJSON(CALLS, []), getHistory(), getMisses(),
+		readJSON(WATCHDOG, null), fs.read(WD_LOG).catch(function() { return ''; }) ]);
 }
 
 /* ---------- formatting ---------- */
@@ -153,6 +156,33 @@ function renderSelftest(r) {
 	]);
 }
 
+function renderWatchdog(w, logText) {
+	if (!w)
+		return E('em', {}, _('No watchdog data yet (first check runs within a minute).'));
+	var stateMap = {
+		healthy: [COLOR.ok, _('Healthy')], suspect: [COLOR.wan, _('Suspect')], switching: [COLOR.vpn, _('Switching server')],
+		limit: [COLOR.bad, _('Unhealthy - switch limit reached')], settling: [COLOR.idle, _('Tunnel just connected')],
+		idle: [COLOR.idle, _('Idle (feature not active)')], disabled: [COLOR.idle, _('Disabled')]
+	};
+	var st = stateMap[w.state] || [COLOR.idle, w.state];
+	var hs = w.handshake_age < 0 ? '-' : (w.handshake_age >= 99999 ? _('never') : w.handshake_age + ' s')
+		+ (w.keepalive > 0 ? '' : ' (' + _('no keepalive - not checked') + ')');
+	var last = (logText || '').trim().split('\n').filter(function(l) { return l; }).slice(-5).reverse();
+	return E('div', {}, [
+		kvTable([
+			[_('State'), badge(st[0], st[1])],
+			[_('Server'), (w.server || '-') + (w.endpoint ? ' (' + w.endpoint + ')' : '')],
+			[_('Last handshake'), E('span', {}, [ w.handshake_ok ? badge(COLOR.ok, _('OK')) : badge(COLOR.bad, _('Stale')), ' ' + hs ])],
+			[_('Relay probe via VPN'), w.probe_ok ? E('span', {}, [ badge(COLOR.ok, _('OK')), ' ' + w.probe_rtt + ' ms (' + w.probe_relay + ')' ])
+				: badge(w.call_active ? COLOR.wan : COLOR.bad, w.call_active ? _('Failed (ignored: call active)') : _('Failed'))],
+			[_('Consecutive failures'), w.failures + ' / ' + w.failures_needed],
+			[_('Switches in last hour'), w.actions_last_hour + ' / ' + w.max_per_hour],
+			[_('Checked'), fmtTime(w.time)]
+		]),
+		last.length ? E('pre', { 'style': 'max-height:8em;overflow:auto;white-space:pre-wrap' }, last.join('\n')) : ''
+	]);
+}
+
 function renderActive(calls) {
 	var now = Date.now() / 1000;
 	return gridTable(
@@ -215,6 +245,7 @@ return view.extend({
 				replace('wa-call-selftest', renderSelftest(d[1]));
 				replace('wa-call-active', renderActive(d[2]));
 				replace('wa-call-history', renderHistory(d[3]));
+				replace('wa-call-watchdog', renderWatchdog(d[5], d[6]));
 				var mb = document.getElementById('wa-call-misses');
 				if (mb) mb.textContent = (d[4] || '').trim() || _('No missed relays recorded.');
 			});
@@ -265,6 +296,28 @@ return view.extend({
 		o.placeholder = '200';
 		o.depends('history', '1');
 
+		o = s.option(form.Flag, 'watchdog', _('Tunnel health watchdog'),
+			_('Every minute, check the WireGuard handshake and probe WhatsApp relays through the VPN. When the tunnel is dead, ' +
+			  'switch to the next server (GL.iNet tunnel failover) or reconnect.'));
+		o.rmempty = false;
+		o.default = '1';
+
+		o = s.option(form.Value, 'watchdog_handshake', _('Dead after handshake age (s)'),
+			_('Only used when the tunnel has persistent keepalive (e.g. NordVPN).'));
+		o.datatype = 'range(130,3600)';
+		o.placeholder = '180';
+		o.depends('watchdog', '1');
+
+		o = s.option(form.Value, 'watchdog_failures', _('Failed checks before switching'));
+		o.datatype = 'range(1,10)';
+		o.placeholder = '2';
+		o.depends('watchdog', '1');
+
+		o = s.option(form.Value, 'watchdog_max_per_hour', _('Max automatic switches per hour'));
+		o.datatype = 'range(0,20)';
+		o.placeholder = '3';
+		o.depends('watchdog', '1');
+
 		o = s.option(form.Flag, 'miss_check', _('Detect missed relays'),
 			_('Log call attempts that went via WAN and got no reply.'));
 		o.rmempty = false;
@@ -304,6 +357,16 @@ return view.extend({
 								if (!r) ui.addNotification(null, E('p', _('Self-test failed: ') + (res.stderr || res.stdout || res.code)), 'danger');
 								else replace('wa-call-selftest', renderSelftest(r));
 							});
+						})
+					])
+				]),
+
+				E('div', { 'class': 'cbi-section' }, [
+					E('h3', {}, _('Tunnel health')),
+					E('div', { 'id': 'wa-call-watchdog' }, renderWatchdog(data[5], data[6])),
+					E('div', { 'class': 'right' }, [
+						button('cbi-button-negative', _('Switch server now'), function() {
+							return runAction(['switch-server'], _('Switching VPN server - calls reconnect in about 15 seconds.'));
 						})
 					])
 				]),

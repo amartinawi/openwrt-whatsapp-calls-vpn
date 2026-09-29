@@ -100,6 +100,25 @@ relays did not (they answer only WhatsApp's own Allocate requests), so the defau
 | `blocked_vpn_fail` | Blocked on WAN and the VPN server can't reach relays: switch server |
 | `wan_down` | Control and relays fail on WAN: an internet or UDP problem |
 
+## Tunnel health watchdog
+Runs in the monitor loop every 60 s while the feature is active and the tunnel has been up for at least 90 s.
+
+| Check | Failure condition |
+|---|---|
+| WireGuard handshake | `wg show <vpn_if> latest-handshakes` older than `watchdog_handshake` (default 180 s). Only when persistent keepalive is set, since an idle tunnel without keepalive legitimately has old handshakes |
+| Relay probe | `selftest.lua --vpn-probe`: STUN Binding to up to 3 relays through the VPN, no reply |
+
+- A probe-only failure is **ignored while a call is connected via the VPN**, because the call proves the path works (guards against a stale relay list).
+- After `watchdog_failures` consecutive failures it **switches server**:
+  - GL.iNet (`vpn-failover-trigger.sh check <vpn_if>` succeeds): `ifdown <vpn_if>`. GL's hotplug starts `tunnel-switch.sh`, which waits
+    8 s and moves to the next profile of the tunnel, skipping servers that don't connect. It keeps the same interface name when the
+    interface isn't shared by other tunnel rules.
+  - Otherwise: `ifdown` + `ifup` (reconnect).
+- At most `watchdog_max_per_hour` switches per hour. Beyond that it logs *"switch limit reached"* and waits.
+- State: `/tmp/wa-call/watchdog.json` (read by LuCI). Actions: `/tmp/wa-call/watchdog.log` and syslog (`wa-call: watchdog: …`).
+
+States: `healthy`, `suspect` (failed, below threshold), `switching`, `limit`, `settling` (tunnel up < 90 s), `idle`, `disabled`.
+
 ## Call tracker
 `calltrack.lua` polls `conntrack -L -p udp --orig-port-dst <port>` every 5 s (conntrack accounting, `nf_conntrack_acct=1`).
 - Flows count if the source is a client inside a configured `lan_if` subnet (not the router itself) and the destination is Meta

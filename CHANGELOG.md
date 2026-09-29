@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 (2026-09-30)
+- **Tunnel health watchdog**: every minute checks the WireGuard handshake age (with persistent keepalive) and probes WhatsApp relays
+  through the VPN (`selftest.lua --vpn-probe`). After `watchdog_failures` consecutive failures it switches server: GL.iNet tunnel
+  failover to the next profile, or a reconnect on plain OpenWrt.
+- Flap protection: probe-only failures are ignored during a connected call, and at most `watchdog_max_per_hour` switches per hour.
+- `wa-call.sh watchdog` and `wa-call.sh switch-server` commands.
+- LuCI: Tunnel health card (server, handshake, probe, failures, recent actions) with a **Switch server now** button, plus watchdog settings.
+
 ## 1.1.0 (2026-09-30)
 - **Call-path self-test** (`selftest.lua`): STUN probes to WhatsApp relays via WAN and via VPN plus a non-Meta WAN control
   probe, with a verdict (ISP blocking / VPN path working / VPN server failing / WAN down). Runs on demand (LuCI button,

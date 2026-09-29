@@ -33,7 +33,8 @@ rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null
 [ "$KEEP_CFG" = 1 ] || cp files/etc/config/wa_call /etc/config/wa_call
 # add options introduced in newer versions without touching existing values
 if [ "$KEEP_CFG" = 1 ]; then
-	for kv in selftest_interval=30 selftest_control=stun.cloudflare.com:3478 history=1 history_max=200; do
+	for kv in selftest_interval=30 selftest_control=stun.cloudflare.com:3478 history=1 history_max=200 \
+		watchdog=1 watchdog_handshake=180 watchdog_failures=2 watchdog_max_per_hour=3; do
 		uci -q get "wa_call.main.${kv%%=*}" >/dev/null || uci set "wa_call.main.${kv%%=*}=${kv#*=}"
 	done
 	uci commit wa_call

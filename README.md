@@ -55,6 +55,8 @@ Everything else ──► normal routing (WAN)
   still leak to WAN without a reply ("missed relays").
 - **Call-path self-test.** STUN probes to WhatsApp relays over the WAN and through the VPN, plus a non-Meta control probe,
   show whether the ISP is blocking calls and whether the VPN path works. It runs on demand and every 30 min.
+- **Tunnel health watchdog.** Checks the WireGuard handshake and probes relays through the VPN every minute. When the server is dead,
+  it switches to the next server in your GL.iNet tunnel's failover list (or reconnects on plain OpenWrt), with flap protection.
 - **Call history and live calls.** Each call is recorded per device (time, duration, route, data, relays) and shown live in LuCI.
 
 Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -150,6 +152,7 @@ or use *System → Advanced Settings* in the GL UI.
 | **Re-apply rules** | Re-installs the rules (normally automatic) |
 | **Enable** | Master on/off switch |
 | **Call-path self-test** | Verdict plus WAN control / WAN relays / VPN relays results with round-trip times. **Run self-test now** button |
+| **Tunnel health** | Watchdog state, current server and endpoint, handshake age, relay probe via VPN, failure count, switches in the last hour, recent actions. **Switch server now** button |
 | **Active calls** | Calls in progress: device, start time, live duration, data ↑/↓, route (VPN/WAN), relays |
 | **Call history** | Last 50 calls: *Connected* (audio flowed), *Setup only* (rang, no media), *No reply* (blocked). **Clear history** button |
 | **Catch-all mode** | Send *all* LAN UDP/3478 through the VPN, not only to Meta addresses |
@@ -186,6 +189,10 @@ Turn the **VPN tunnel on or off** (GL VPN Dashboard, or `ifup`/`ifdown`). Calls 
 | `selftest_interval` | `30` | Run the self-test every N minutes (`0` = only on demand) |
 | `selftest_control` | `stun.cloudflare.com:3478` | Non-Meta STUN server used as the WAN control probe |
 | `selftest_target` (list) | 7 built-in relays | WhatsApp relays probed (only relays that answer STUN Binding requests work, e.g. `57.144.x.57`) |
+| `watchdog` | `1` | Tunnel health watchdog on/off |
+| `watchdog_handshake` | `180` | Handshake older than N seconds = dead (only checked when the tunnel uses persistent keepalive) |
+| `watchdog_failures` | `2` | Consecutive failed checks (1/minute) before switching |
+| `watchdog_max_per_hour` | `3` | Maximum automatic switches per hour |
 | `history` | `1` | Record finished calls in `/etc/wa-call/history.jsonl` |
 | `history_max` | `200` | Number of calls kept |
 
@@ -201,6 +208,8 @@ After editing: `uci commit wa_call && /etc/init.d/wa-call reload`.
 /etc/wa-call/wa-call.sh apply           # install/remove rules based on current state
 /etc/wa-call/wa-call.sh update-list     # refresh Meta prefixes now
 /etc/wa-call/wa-call.sh selftest        # call-path self-test, prints JSON verdict
+/etc/wa-call/wa-call.sh watchdog        # run one health check now, prints JSON
+/etc/wa-call/wa-call.sh switch-server   # switch to the next VPN server now
 cat /tmp/wa-call/calls.json             # calls in progress
 cat /etc/wa-call/history.jsonl          # call history (one JSON object per call)
 /etc/wa-call/wa-call.sh down            # remove rules (until next apply)
@@ -238,6 +247,11 @@ No. This was tested explicitly: WhatsApp relays don't require both to come from 
 **How do I know if my ISP is blocking calls?**
 Run the self-test (LuCI button or `wa-call.sh selftest`). *"ISP blocks WhatsApp call relays"* means the relays get no reply over
 the WAN while the control probe to a non-Meta STUN server on the same port does.
+
+**What does the watchdog do on GL.iNet?**
+It brings the tunnel interface down, the same event as a real drop. GL's own tunnel failover then moves to the next profile in the
+tunnel's list and skips servers that fail to connect. Add several servers to the tunnel (VPN Dashboard → tunnel → profiles)
+to make use of it. On plain OpenWrt it reconnects the same interface.
 
 **Why does a call between two devices on my LAN show a short duration in history?**
 When both ends are on the same LAN, WhatsApp can switch to a direct local connection once the call is up. The router then only

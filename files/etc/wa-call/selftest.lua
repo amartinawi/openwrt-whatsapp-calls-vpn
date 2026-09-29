@@ -5,6 +5,7 @@
 -- Call-path self-test: sends STUN Binding Requests (RFC 5389) to WhatsApp relays
 -- over the WAN and over the VPN, plus a non-Meta control probe over the WAN, and
 -- prints a JSON verdict. Usage: lua selftest.lua [output_file]
+--        lua selftest.lua --vpn-probe   (watchdog: VPN relay probe only; prints 'ok <rtt> <relay>' or 'fail', exit 0/1)
 
 local nixio = require "nixio"
 local uci = require("uci").cursor()
@@ -126,6 +127,15 @@ if type(targets) ~= "table" or #targets == 0 then targets = DEFAULT_TARGETS end
 local control = cfg("selftest_control", "stun.cloudflare.com:3478")
 local chost, cport = control:match("^([^:]+):?(%d*)$")
 cport = tonumber(cport) or 3478
+
+-- Fast VPN-only probe for the watchdog (the feature's rule 5201 routes the bound socket)
+if arg[1] == "--vpn-probe" then
+	if not dev_up(vpn_if) then print("fail vpn-down"); os.exit(1) end
+	local r = probe_path(targets, port, vpn_if)
+	if r.ok then print(string.format("ok %d %s", r.rtt, r.relay)); os.exit(0) end
+	print("fail " .. table.concat(r.tried, ","))
+	os.exit(1)
+end
 
 local wan_if = wan_device()
 local result = { time = os.time(), vpn_if = vpn_if, wan_if = wan_if }

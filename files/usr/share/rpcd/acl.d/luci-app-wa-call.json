@@ -7,7 +7,9 @@
 				"/tmp/wa-call/misses.log": [ "read" ],
 				"/tmp/wa-call/selftest.json": [ "read" ],
 				"/tmp/wa-call/calls.json": [ "read" ],
-				"/etc/wa-call/history.jsonl": [ "read" ]
+				"/etc/wa-call/history.jsonl": [ "read" ],
+				"/tmp/wa-call/watchdog.json": [ "read" ],
+				"/tmp/wa-call/watchdog.log": [ "read" ]
 			},
 			"uci": [ "wa_call" ]
 		},
@@ -16,6 +18,7 @@
 				"/etc/wa-call/wa-call.sh update-list": [ "exec" ],
 				"/etc/wa-call/wa-call.sh apply": [ "exec" ],
 				"/etc/wa-call/wa-call.sh selftest": [ "exec" ],
+				"/etc/wa-call/wa-call.sh switch-server": [ "exec" ],
 				"/tmp/wa-call/misses.log": [ "write" ],
 				"/etc/wa-call/history.jsonl": [ "write" ]
 			},
