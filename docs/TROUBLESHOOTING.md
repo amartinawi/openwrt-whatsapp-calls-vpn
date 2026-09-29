@@ -6,6 +6,16 @@ Start with:
 logread -e wa-call | tail -20
 ```
 
+## Reading the self-test
+| Result | What to do |
+|---|---|
+| *ISP blocks WhatsApp call relays; VPN path works* | Normal state: calls go via the VPN |
+| *WhatsApp relays reachable directly* | The ISP isn't blocking right now. The VPN isn't needed, but it doesn't hurt |
+| *…and the VPN is down* | Bring the VPN tunnel up |
+| *…VPN server cannot reach them* | The VPN server blocks or can't reach Meta relays: switch server |
+| *WAN UDP not working* | Internet is down, or UDP is blocked entirely |
+| VPN "Failed" but calls work | The probed relays may have changed. Set `selftest_target` to `.57` relays seen in `history.jsonl` |
+
 ## State shows "idle - calls via WAN"
 - **VPN is down.** Check `ip -br link show <vpn_if>`. The feature only activates while the device exists and is UP.
 - **Wrong device name.** `uci get wa_call.main.vpn_if` must match `ip -br link` (GL.iNet: `wgclient1`, `ovpnclient1`).

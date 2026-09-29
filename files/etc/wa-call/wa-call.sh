@@ -3,13 +3,14 @@
 # https://github.com/amartinawi/openwrt-whatsapp-calls-vpn
 # wa-call.sh - route WhatsApp call media (UDP 3478 to Meta relays) via a VPN interface.
 # Additive only: own ipset, own iptables chains, own fwmark bit, own routing table.
-# Commands: apply | down | stop | status [--json] | update-list | check-miss | daemon
+# Commands: apply | down | stop | status [--json] | update-list | check-miss | selftest | daemon
 
 . /lib/functions.sh
 
 MARK=0x01000000
 TABLE=2001
 PRIO=5200
+PRIO_OIF=5201
 SET=wa_meta
 CH_MANGLE=WA_CALL
 CH_FWD=WA_CALL_FWD
@@ -19,6 +20,9 @@ RUN=/tmp/wa-call
 LIST="$DIR/meta-ipv4.txt"
 LIST_DEFAULT="$DIR/meta-ipv4.default"
 MISS_LOG="$RUN/misses.log"
+SELFTEST="$DIR/selftest.lua"
+SELFTEST_OUT="$RUN/selftest.json"
+CALLS_ACTIVE="$RUN/calls.json"
 LOCK="$RUN/lock"
 PRIVATE_NETS="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 127.0.0.0/8"
 
@@ -36,6 +40,7 @@ load_config() {
 	config_get PREFIX_URL main prefix_url ''
 	config_get_bool MISS_CHECK main miss_check 1
 	config_get MISS_IGNORE_SPORT main miss_ignore_sport '41641'
+	config_get SELFTEST_INTERVAL main selftest_interval 30
 }
 
 vpn_is_up() { ip link show "$VPN_IF" 2>/dev/null | grep -q ',UP'; }
@@ -115,6 +120,9 @@ rules_up() {
 
 	ip route replace default dev "$VPN_IF" table "$TABLE"
 	rules_active || ip rule add pref "$PRIO" fwmark "$MARK/$MARK" lookup "$TABLE"
+	# lets router-local sockets bound to the VPN device (self-test) find a route
+	ip rule del pref "$PRIO_OIF" 2>/dev/null
+	ip rule add pref "$PRIO_OIF" oif "$VPN_IF" lookup "$TABLE"
 
 	# Push call flows that are stuck on WAN to reconnect through the VPN
 	conntrack -D -p udp --dport "$PORT" -m 0x0/"$MARK" >/dev/null 2>&1
@@ -125,6 +133,7 @@ rules_down() {
 	local was_active=0
 	rules_active && was_active=1
 	ip rule del pref "$PRIO" 2>/dev/null
+	ip rule del pref "$PRIO_OIF" 2>/dev/null
 	ip route flush table "$TABLE" 2>/dev/null
 	unhook_mangle_all
 	unhook filter FORWARD "$CH_FWD"
@@ -200,6 +209,11 @@ check_miss() {
 	return 0
 }
 
+# Call-path self-test (STUN to WhatsApp relays via WAN and via VPN); prints JSON
+selftest() {
+	lua "$SELFTEST" "$SELFTEST_OUT"
+}
+
 daemon() {
 	local n=0
 	while true; do
@@ -212,19 +226,24 @@ daemon() {
 		   [ "$(list_age_days)" -ge "$REFRESH_DAYS" ]; then
 			( flock 9; update_list ) 9>"$LOCK"
 		fi
+		# periodic self-test every selftest_interval minutes (0 = off)
+		if [ "${SELFTEST_INTERVAL:-0}" -gt 0 ] && [ $((n % SELFTEST_INTERVAL)) -eq 1 ]; then
+			( flock 9; selftest >/dev/null ) 9>"$LOCK"
+		fi
 	done
 }
 
 status() {
-	local up=0 active=0 flows prefixes misses
+	local up=0 active=0 flows prefixes misses calls
 	vpn_is_up && up=1
 	rules_active && active=1
 	flows="$(conntrack -L -m "$MARK/$MARK" 2>/dev/null | grep -c '^udp')"
 	prefixes="$(ipset list $SET 2>/dev/null | grep -cE '^[0-9]')"
 	misses="$(grep -c . "$MISS_LOG" 2>/dev/null)"
+	calls="$(grep -o '"ip":' "$CALLS_ACTIVE" 2>/dev/null | wc -l)"
 	if [ "$1" = "--json" ]; then
-		printf '{"enabled":%s,"vpn_if":"%s","vpn_up":%s,"active":%s,"catch_all":%s,"prefixes":%s,"call_flows":%s,"list_age_days":%s,"misses":%s}\n' \
-			"$ENABLED" "$VPN_IF" "$up" "$active" "$CATCH_ALL" "${prefixes:-0}" "${flows:-0}" "$(list_age_days)" "${misses:-0}"
+		printf '{"enabled":%s,"vpn_if":"%s","vpn_up":%s,"active":%s,"catch_all":%s,"prefixes":%s,"call_flows":%s,"list_age_days":%s,"misses":%s,"active_calls":%s}\n' \
+			"$ENABLED" "$VPN_IF" "$up" "$active" "$CATCH_ALL" "${prefixes:-0}" "${flows:-0}" "$(list_age_days)" "${misses:-0}" "${calls:-0}"
 		return
 	fi
 	echo "enabled:        $ENABLED"
@@ -234,6 +253,8 @@ status() {
 	echo "prefixes:       ${prefixes:-0} (list age $(list_age_days) days, $(active_list))"
 	echo "call flows now: ${flows:-0}"
 	echo "missed relays:  ${misses:-0} (see $MISS_LOG)"
+	echo "active calls:   ${calls:-0}"
+	[ -s "$SELFTEST_OUT" ] && echo "self-test:      $(jsonfilter -i "$SELFTEST_OUT" -e '@.verdict.text') ($(date -d @"$(jsonfilter -i "$SELFTEST_OUT" -e '@.time')" '+%H:%M' 2>/dev/null))"
 	[ "$active" = 1 ] && { echo "--- counters"; ipt -t mangle -L "$CH_MANGLE" -v -n | sed -n '3,$p'; }
 }
 
@@ -246,6 +267,7 @@ case "$1" in
 	status)      status "$2" ;;
 	update-list) ( flock 9; update_list ) 9>"$LOCK" ;;
 	check-miss)  ( flock 9; check_miss ) 9>"$LOCK" ;;
+	selftest)    ( flock 9; selftest ) 9>"$LOCK" ;;
 	daemon)      daemon ;;
-	*) echo "usage: $0 apply|down|stop|status [--json]|update-list|check-miss|daemon"; exit 1 ;;
+	*) echo "usage: $0 apply|down|stop|status [--json]|update-list|check-miss|selftest|daemon"; exit 1 ;;
 esac

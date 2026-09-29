@@ -53,6 +53,9 @@ Everything else ──► normal routing (WAN)
   The only change to existing config is one `firewall` include entry, so the rules come back after firewall reloads.
 - **Self-maintaining.** Meta's prefix list is refreshed from RIPEstat every 7 days (240+ prefixes). A monitor flags call attempts that
   still leak to WAN without a reply ("missed relays").
+- **Call-path self-test.** STUN probes to WhatsApp relays over the WAN and through the VPN, plus a non-Meta control probe,
+  show whether the ISP is blocking calls and whether the VPN path works. It runs on demand and every 30 min.
+- **Call history and live calls.** Each call is recorded per device (time, duration, route, data, relays) and shown live in LuCI.
 
 Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -146,6 +149,9 @@ or use *System → Advanced Settings* in the GL UI.
 | **Update Meta list now** | Downloads the current AS32934 prefix list from RIPEstat |
 | **Re-apply rules** | Re-installs the rules (normally automatic) |
 | **Enable** | Master on/off switch |
+| **Call-path self-test** | Verdict plus WAN control / WAN relays / VPN relays results with round-trip times. **Run self-test now** button |
+| **Active calls** | Calls in progress: device, start time, live duration, data ↑/↓, route (VPN/WAN), relays |
+| **Call history** | Last 50 calls: *Connected* (audio flowed), *Setup only* (rang, no media), *No reply* (blocked). **Clear history** button |
 | **Catch-all mode** | Send *all* LAN UDP/3478 through the VPN, not only to Meta addresses |
 | **Possible missed relays** | Log of call attempts that went via WAN without a reply, with a **Clear log** button |
 
@@ -177,6 +183,11 @@ Turn the **VPN tunnel on or off** (GL VPN Dashboard, or `ifup`/`ifdown`). Calls 
 | `prefix_url` | RIPEstat AS32934 | Source for the prefix list (RIPEstat JSON format) |
 | `miss_check` | `1` | Enable the missed-relay detector |
 | `miss_ignore_sport` (list) | `41641` | Source ports ignored by the detector (Tailscale) |
+| `selftest_interval` | `30` | Run the self-test every N minutes (`0` = only on demand) |
+| `selftest_control` | `stun.cloudflare.com:3478` | Non-Meta STUN server used as the WAN control probe |
+| `selftest_target` (list) | 7 built-in relays | WhatsApp relays probed (only relays that answer STUN Binding requests work, e.g. `57.144.x.57`) |
+| `history` | `1` | Record finished calls in `/etc/wa-call/history.jsonl` |
+| `history_max` | `200` | Number of calls kept |
 
 After editing: `uci commit wa_call && /etc/init.d/wa-call reload`.
 
@@ -189,6 +200,9 @@ After editing: `uci commit wa_call && /etc/init.d/wa-call reload`.
 /etc/wa-call/wa-call.sh status --json   # machine-readable (used by LuCI)
 /etc/wa-call/wa-call.sh apply           # install/remove rules based on current state
 /etc/wa-call/wa-call.sh update-list     # refresh Meta prefixes now
+/etc/wa-call/wa-call.sh selftest        # call-path self-test, prints JSON verdict
+cat /tmp/wa-call/calls.json             # calls in progress
+cat /etc/wa-call/history.jsonl          # call history (one JSON object per call)
 /etc/wa-call/wa-call.sh down            # remove rules (until next apply)
 /etc/init.d/wa-call {start|stop|reload|enable|disable}
 logread -e wa-call                      # log (state changes, list updates, missed relays)
@@ -220,6 +234,14 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#why-not-dpi).
 
 **Does signalling on WAN and media on VPN (two different public IPs) break calls?**
 No. This was tested explicitly: WhatsApp relays don't require both to come from the same IP.
+
+**How do I know if my ISP is blocking calls?**
+Run the self-test (LuCI button or `wa-call.sh selftest`). *"ISP blocks WhatsApp call relays"* means the relays get no reply over
+the WAN while the control probe to a non-Meta STUN server on the same port does.
+
+**Why does a call between two devices on my LAN show a short duration in history?**
+When both ends are on the same LAN, WhatsApp can switch to a direct local connection once the call is up. The router then only
+sees the relay phase at the start. Calls to people outside your network stay on the relay and show their full duration.
 
 **Will Facebook/Instagram go through the VPN?**
 Only UDP 3478 traffic to Meta does, and those apps rarely use it. Their normal traffic stays on WAN.

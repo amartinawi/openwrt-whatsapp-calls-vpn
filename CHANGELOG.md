@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 (2026-09-30)
+- **Call-path self-test** (`selftest.lua`): STUN probes to WhatsApp relays via WAN and via VPN plus a non-Meta WAN control
+  probe, with a verdict (ISP blocking / VPN path working / VPN server failing / WAN down). Runs on demand (LuCI button,
+  `wa-call.sh selftest`) and every `selftest_interval` minutes.
+- **Call history and active calls** (`calltrack.lua`, procd instance `wa-call-tracker`): per-device call sessions from
+  conntrack counters: start, duration, route (VPN/WAN), status (connected / setup only / no reply), data, relays.
+  History is kept in `/etc/wa-call/history.jsonl` (`history`, `history_max`).
+- LuCI: new Self-test, Active calls and Call history sections. Status shows the active-call count.
+- New ip rule 5201 (`oif <vpn_if> lookup 2001`) so router-local probes bound to the VPN device are routed.
+- Installer adds new options to an existing config without changing current values.
+
 ## 1.0.0 (2026-09-29)
 First public release.
 

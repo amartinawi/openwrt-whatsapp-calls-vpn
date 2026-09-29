@@ -31,6 +31,13 @@ cp files/usr/share/rpcd/acl.d/luci-app-wa-call.json /usr/share/rpcd/acl.d/
 rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null
 /etc/init.d/rpcd reload
 [ "$KEEP_CFG" = 1 ] || cp files/etc/config/wa_call /etc/config/wa_call
+# add options introduced in newer versions without touching existing values
+if [ "$KEEP_CFG" = 1 ]; then
+	for kv in selftest_interval=30 selftest_control=stun.cloudflare.com:3478 history=1 history_max=200; do
+		uci -q get "wa_call.main.${kv%%=*}" >/dev/null || uci set "wa_call.main.${kv%%=*}=${kv#*=}"
+	done
+	uci commit wa_call
+fi
 chmod +x /etc/wa-call/wa-call.sh /etc/wa-call/fw-include.sh /etc/init.d/wa-call
 if ! uci -q get firewall.wa_call >/dev/null; then
 	uci set firewall.wa_call=include

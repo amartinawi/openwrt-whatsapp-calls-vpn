@@ -4,7 +4,10 @@
 		"read": {
 			"file": {
 				"/etc/wa-call/wa-call.sh status --json": [ "exec" ],
-				"/tmp/wa-call/misses.log": [ "read" ]
+				"/tmp/wa-call/misses.log": [ "read" ],
+				"/tmp/wa-call/selftest.json": [ "read" ],
+				"/tmp/wa-call/calls.json": [ "read" ],
+				"/etc/wa-call/history.jsonl": [ "read" ]
 			},
 			"uci": [ "wa_call" ]
 		},
@@ -12,7 +15,9 @@
 			"file": {
 				"/etc/wa-call/wa-call.sh update-list": [ "exec" ],
 				"/etc/wa-call/wa-call.sh apply": [ "exec" ],
-				"/tmp/wa-call/misses.log": [ "write" ]
+				"/etc/wa-call/wa-call.sh selftest": [ "exec" ],
+				"/tmp/wa-call/misses.log": [ "write" ],
+				"/etc/wa-call/history.jsonl": [ "write" ]
 			},
 			"uci": [ "wa_call" ]
 		}

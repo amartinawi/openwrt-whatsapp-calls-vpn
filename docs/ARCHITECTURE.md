@@ -7,6 +7,9 @@
 | `/etc/wa-call/wa-call.sh` | Engine: `apply`, `down`, `stop`, `status [--json]`, `update-list`, `check-miss`, `daemon` |
 | `/etc/wa-call/meta-ipv4.default` | Bundled Meta (AS32934) prefix list, used until the first successful download |
 | `/etc/wa-call/meta-ipv4.txt` | Downloaded prefix list (RIPEstat), refreshed every `refresh_days` |
+| `/etc/wa-call/selftest.lua` | Call-path self-test (STUN via WAN, via VPN, WAN control), writes `/tmp/wa-call/selftest.json` |
+| `/etc/wa-call/calltrack.lua` | Call tracker (procd instance `wa-call-tracker`): active calls + history |
+| `/etc/wa-call/history.jsonl` | Call history, one JSON object per finished call (kept across reboots/upgrades) |
 | `/etc/wa-call/fw-include.sh` | fw3 include: runs `apply` after every firewall start/reload |
 | `/etc/config/wa_call` | UCI configuration |
 | `/etc/init.d/wa-call` | procd service: runs `apply` and supervises the monitor daemon; reloads on UCI change |
@@ -26,7 +29,7 @@ All objects are private to this package:
 | ipset | `wa_meta` (`hash:net`) |
 | fwmark bit | `0x01000000` (mask `0x01000000`) |
 | routing table | `2001` |
-| ip rule priority | `5200` |
+| ip rule priority | `5200` (fwmark), `5201` (oif `<vpn_if>`, for router-local probes bound to the VPN device) |
 | chains | mangle `WA_CALL`, filter `WA_CALL_FWD`, nat `WA_CALL_NAT` |
 
 ### Rules (catch-all off)
@@ -76,6 +79,37 @@ daemon (every 60 s) ─► check-miss ; hourly: update-list if list older than r
 - On activation it deletes *unmarked* UDP/`port` conntrack entries, so a call stuck on WAN reconnects through the VPN immediately.
 - All mutating commands take `flock /tmp/wa-call/lock`.
 
+## Call-path self-test
+`selftest.lua` uses Lua `nixio` sockets to send RFC 5389 STUN Binding Requests (`0x0001`, magic cookie `0x2112A442`, random
+transaction ID) and accepts only a Binding Success (`0x0101`) with a matching transaction ID.
+
+| Probe | Socket | Target |
+|---|---|---|
+| WAN control | bound to the WAN device | `selftest_control` (default Cloudflare STUN, port 3478) |
+| WAN relays | bound to the WAN device | up to 3 of `selftest_target` |
+| VPN relays | bound to `vpn_if` (routed by rule 5201 → table 2001; added temporarily if the feature is idle) | up to 3 of `selftest_target` |
+
+Only some WhatsApp relays answer plain Binding requests. In testing, the `57.144.x.57` relays answered and the `x.54` / `157.240.x`
+relays did not (they answer only WhatsApp's own Allocate requests), so the defaults are `.57` relays.
+
+| Verdict code | Meaning |
+|---|---|
+| `blocked_vpn_ok` | Relays unreachable via WAN, control OK, reachable via VPN: the expected state when this package is needed |
+| `not_blocked` | Relays reachable via WAN: the ISP isn't blocking right now |
+| `blocked_vpn_down` | Blocked on WAN and the VPN device is down |
+| `blocked_vpn_fail` | Blocked on WAN and the VPN server can't reach relays: switch server |
+| `wan_down` | Control and relays fail on WAN: an internet or UDP problem |
+
+## Call tracker
+`calltrack.lua` polls `conntrack -L -p udp --orig-port-dst <port>` every 5 s (conntrack accounting, `nf_conntrack_acct=1`).
+- Flows count if the source is a client inside a configured `lan_if` subnet (not the router itself) and the destination is Meta
+  (Lua CIDR match against the active prefix list) or the flow carries the call mark.
+- Per-flow packet/byte deltas are summed into a session per device. A session ends after 20 s without packets.
+- Status: **connected** (≥ 50 reply packets and ≥ 5 s), **setup only** (some replies), **no reply** (no packets back, i.e. blocked).
+- Route: **vpn** if any flow had the call mark, otherwise **wan**.
+- Active sessions are written to `/tmp/wa-call/calls.json` every tick. Finished ones are appended to `history.jsonl` (trimmed
+  to `history_max`) and logged to syslog (`call ended: …`).
+
 ## Prefix list
 - Source: `https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS32934`
 - Parsed with `jsonfilter`. IPv6 is filtered out.
@@ -101,4 +135,5 @@ The first design used GL.iNet's DPI (Netify agent + flow-actions plugin) to lear
 ## Limitations
 - iptables/ipset only (fw3). fw4/nftables is not supported yet.
 - IPv4 only.
+- Call tracking sees only traffic that crosses the router. LAN↔LAN calls that switch to a direct local path show only the relay phase.
 - Assumes the VPN interface is a point-to-point device (`default dev <vpn_if>`), as with WireGuard and OpenVPN tun.

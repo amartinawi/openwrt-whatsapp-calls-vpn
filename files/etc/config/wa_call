@@ -17,3 +17,10 @@ config wa_call 'main'
 	option miss_check '1'
 	# Source ports ignored by the miss detector (Tailscale STUN)
 	list miss_ignore_sport '41641'
+	# Call-path self-test every N minutes (0 = only on demand)
+	option selftest_interval '30'
+	# Non-Meta STUN server used as WAN control probe
+	option selftest_control 'stun.cloudflare.com:3478'
+	# Record call history in /etc/wa-call/history.jsonl
+	option history '1'
+	option history_max '200'
